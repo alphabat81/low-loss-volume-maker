@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Low Loss Volume Maker</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --line: #dce3eb;
+      --text: #17202a;
+      --muted: #66768a;
+      --good: #117a5c;
+      --bad: #b42318;
+      --warn: #b26a00;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    main {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    h2 { margin: 0; font-size: 16px; }
+    .sub { color: var(--muted); font-size: 14px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .cols {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(380px, .75fr);
+      gap: 18px;
+    }
+    .card, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 24px rgba(23,32,42,.07);
+    }
+    .card { padding: 16px; min-height: 112px; }
+    .panel { padding: 18px; }
+    .label { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .value { font-size: 24px; font-weight: 800; overflow-wrap: anywhere; }
+    .good { color: var(--good); }
+    .bad { color: var(--bad); }
+    .warn { color: var(--warn); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+    .dot.warn { background: var(--warn); }
+    .dot.bad { background: var(--bad); }
+    .stack { display: grid; gap: 12px; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .row strong { display: block; margin-bottom: 4px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    button {
+      height: 42px;
+      border-radius: 8px;
+      border: 1px solid var(--blue);
+      background: var(--blue);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #fff;
+      border-color: var(--line);
+      color: var(--text);
+    }
+    pre {
+      margin: 0;
+      min-height: 260px;
+      max-height: 460px;
+      overflow: auto;
+      background: #101827;
+      color: #d7fbe8;
+      border-radius: 8px;
+      padding: 14px;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    .callout {
+      border-left: 4px solid var(--warn);
+      background: #fff8eb;
+      border-radius: 8px;
+      color: #603d05;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    @media (max-width: 940px) {
+      main { padding: 18px; }
+      header { display: grid; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .cols { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Low Loss Volume Maker</h1>
+        <div class="sub">낮은 손실로 거래량을 안정적으로 누적하기 위한 Low Loss Volume Maker 콘솔</div>
+      </div>
+      <div id="modePill" class="pill"><span class="dot warn"></span>loading</div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <div class="label">Market</div>
+        <div id="market" class="value">-</div>
+      </article>
+      <article class="card">
+        <div class="label">Mode</div>
+        <div id="mode" class="value">-</div>
+      </article>
+      <article class="card">
+        <div class="label">Daily Volume</div>
+        <div id="volume" class="value">-</div>
+      </article>
+      <article class="card">
+        <div class="label">Last Stop Reason</div>
+        <div id="lastError" class="value warn">-</div>
+      </article>
+    </section>
+
+    <section class="cols">
+      <article class="panel stack">
+        <h2>Controls</h2>
+        <div class="callout">
+          현재 설정으로 1회 루프만 실행합니다. live 모드에서는 실제 주문/취소가 발생할 수 있습니다.
+        </div>
+        <button id="startBtn">계속 거래 시작</button>
+        <button class="secondary" id="stopBtn">거래 중지</button>
+        <button class="secondary" id="runOnceBtn">현재 모드 1회 실행</button>
+        <button class="secondary" id="openExchangeBtn">XAU 거래소 화면 열기</button>
+        <button class="secondary" id="refreshBtn">새로고침</button>
+        <div class="row">
+          <div>
+            <strong>Leverage</strong>
+            <span id="leverage">-</span>
+          </div>
+          <div>
+            <strong>Max Exposure</strong>
+            <span id="exposure">-</span>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <strong>Spread Rule</strong>
+            <span id="spreadRule">-</span>
+          </div>
+          <div>
+            <strong>Daily Target</strong>
+            <span id="targetVolume">-</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel stack">
+        <h2>State</h2>
+        <div class="row"><div><strong>Consecutive Losses</strong><span id="losses">-</span></div></div>
+        <div class="row"><div><strong>Stopped For Day</strong><span id="stopped">-</span></div></div>
+        <div class="row"><div><strong>Open Paper Orders</strong><span id="paperOrders">-</span></div></div>
+        <div class="row"><div><strong>Paper Positions</strong><span id="paperPositions">-</span></div></div>
+      </article>
+    </section>
+
+    <section class="panel stack">
+      <h2>Run Output</h2>
+      <pre id="runOutput">ready</pre>
+    </section>
+
+    <section class="panel stack">
+      <h2>Recent Log</h2>
+      <pre id="logOutput">loading...</pre>
+    </section>
+  </main>
+
+  <script>
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function modePill(mode) {
+      const kind = mode === "live" ? "bad" : "";
+      return `<span class="dot ${kind}"></span>${mode}`;
+    }
+
+    async function refresh() {
+      const response = await fetch("/api/status", {cache: "no-store"});
+      const data = await response.json();
+      setText("market", data.config.market);
+      setText("mode", data.config.mode);
+      document.getElementById("modePill").innerHTML = modePill(data.config.mode);
+      const targetText = data.config.enable_daily_target_stop === false ? "unlimited" : `${data.config.daily_target_volume_usdc} USDC`;
+      setText("volume", `${data.state.daily_volume_usdc || "0"} / ${targetText}`);
+      setText("lastError", data.state.last_error || "none");
+      setText("leverage", `${data.config.default_leverage}x (max ${data.config.max_leverage}x)`);
+      setText("exposure", `${Number(data.config.max_total_exposure_pct_equity) * 100}% total / ${Number(data.config.max_direction_exposure_pct_equity) * 100}% per side`);
+      setText("spreadRule", `normal <= ${Number(data.config.spread_normal_pct) * 100}%, halt > ${Number(data.config.spread_reduce_pct) * 100}%`);
+      setText("targetVolume", targetText);
+      setText("losses", data.state.consecutive_losses || 0);
+      setText("stopped", data.state.stopped_for_day ? "yes" : "no");
+      setText("paperOrders", Object.keys(data.state.paper_orders || {}).length);
+      setText("paperPositions", JSON.stringify(data.state.paper_positions || {}, null, 2));
+      document.getElementById("startBtn").disabled = data.bot_running;
+      document.getElementById("stopBtn").disabled = !data.bot_running;
+      document.getElementById("modePill").innerHTML = `${modePill(data.config.mode)} · ${data.bot_running ? "running" : "stopped"}`;
+      if (data.config.mode === "live" && (!data.live_enabled || !data.key_present || !data.secret_present)) {
+        setText("runOutput", "live mode is configured, but .env credentials or ONDO_LIVE_ENABLED are missing.");
+      }
+      setText("logOutput", data.log_tail || "no log yet");
+    }
+
+    document.getElementById("runOnceBtn").addEventListener("click", async () => {
+      const ok = window.confirm("현재 모드로 1회 실행합니다. live 모드라면 실제 주문 또는 주문 취소가 발생할 수 있습니다. 계속할까요?");
+      if (!ok) return;
+      setText("runOutput", "running one loop...");
+      const response = await fetch("/api/run-once", {method: "POST"});
+      const data = await response.json();
+      setText("runOutput", JSON.stringify(data, null, 2));
+      if (data.returncode === 0 && data.market_url) {
+        window.open(data.market_url, "_blank");
+      }
+      await refresh();
+    });
+
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      const ok = window.confirm("계속 거래를 시작합니다. live 모드에서는 실제 주문/취소가 반복 실행됩니다. 계속할까요?");
+      if (!ok) return;
+      setText("runOutput", "starting continuous bot...");
+      const response = await fetch("/api/start", {method: "POST"});
+      const data = await response.json();
+      setText("runOutput", JSON.stringify(data, null, 2));
+      await refresh();
+    });
+
+    document.getElementById("stopBtn").addEventListener("click", async () => {
+      setText("runOutput", "stopping bot...");
+      const response = await fetch("/api/stop", {method: "POST"});
+      const data = await response.json();
+      setText("runOutput", JSON.stringify(data, null, 2));
+      await refresh();
+    });
+
+    document.getElementById("openExchangeBtn").addEventListener("click", () => {
+      window.open("https://app.ondoperps.xyz/trade/perps/XAU-USD.P", "_blank");
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh().catch(error => setText("runOutput", String(error)));
+  </script>
+</body>
+</html>
