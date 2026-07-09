@@ -10,9 +10,17 @@ class LowLossVolumeMaker:
         spread = snapshot["spread_pct"]
         tp = min(max(spread / D("2"), D(self.config["take_profit_min_pct"])), D(self.config["take_profit_max_pct"]))
         entry_offset = max(spread / D("2"), D(self.config["entry_offset_pct"]))
-        order_notional = D(equity) * D(self.config["order_size_pct_equity"]) * D(risk_multiplier)
-        order_notional = max(order_notional, D(equity) * D(self.config["min_order_size_pct_equity"]) * D(risk_multiplier))
-        order_notional = min(order_notional, D(equity) * D(self.config["max_order_size_pct_equity"]) * D(risk_multiplier))
+        if "order_margin_pct_equity" in self.config:
+            leverage = D(self.config["default_leverage"])
+            order_notional = D(equity) * D(self.config["order_margin_pct_equity"]) * leverage * D(risk_multiplier)
+            min_notional = D(equity) * D(self.config["min_order_margin_pct_equity"]) * leverage * D(risk_multiplier)
+            max_notional = D(equity) * D(self.config["max_order_margin_pct_equity"]) * leverage * D(risk_multiplier)
+        else:
+            order_notional = D(equity) * D(self.config["order_size_pct_equity"]) * D(risk_multiplier)
+            min_notional = D(equity) * D(self.config["min_order_size_pct_equity"]) * D(risk_multiplier)
+            max_notional = D(equity) * D(self.config["max_order_size_pct_equity"]) * D(risk_multiplier)
+        order_notional = max(order_notional, min_notional)
+        order_notional = min(order_notional, max_notional)
         if self.config.get("maker_quote_mode") == "top_of_book":
             long_entry = snapshot["best_bid"]
             short_entry = snapshot["best_ask"]
