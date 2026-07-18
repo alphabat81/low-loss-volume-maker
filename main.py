@@ -159,7 +159,11 @@ def retry_startup_step(label, action, config, state_store, logger, once=False):
     state = state_store.state
     while True:
         try:
-            return action()
+            result = action()
+            if state.get("last_error") is not None:
+                state["last_error"] = None
+                state_store.save()
+            return result
         except Exception as exc:
             message = f"{label}: {exc}"
             state["last_error"] = message
@@ -214,6 +218,7 @@ def main():
 
     while True:
         try:
+            state["last_error"] = None
             snap = market_data.snapshot()
             if mode == "paper":
                 fills = paper.simulate_fills(config["market"], snap["best_bid"], snap["best_ask"])

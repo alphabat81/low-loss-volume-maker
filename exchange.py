@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -18,6 +19,10 @@ class OndoExchange:
         self.mode = mode
         self.key_id = os.getenv("ONDO_KEY_ID")
         self.api_secret = os.getenv("ONDO_API_SECRET")
+        self._clock_offset_ms = 0
+        # Ondo API traffic must go directly to the exchange. A stale system
+        # proxy can otherwise leave the bot running while every request fails.
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     @property
     def live_ready(self):
@@ -30,7 +35,7 @@ class OndoExchange:
             "User-Agent": "low-loss-volume-maker/0.1",
         }
         if self.key_id and self.api_secret:
-            ts = str(int(time.time() * 1000))
+            ts = str(int(time.time() * 1000) + self._clock_offset_ms)
             msg = ts + method.upper() + path + body
             sig = hmac.new(self.api_secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
             headers.update({"ONDO-KEY-ID": self.key_id, "ONDO-TIMESTAMP": ts, "ONDO-SIGN": sig})
@@ -40,20 +45,35 @@ class OndoExchange:
         if auth and self.mode == "live" and not self.live_ready:
             raise ExchangeError("live trading is not enabled or API credentials are missing")
         body = "" if payload is None else json.dumps(payload, separators=(",", ":"))
-        req = urllib.request.Request(
-            self.base_url + path,
-            data=body.encode() if body else None,
-            headers=self._headers(method, path, body),
-            method=method.upper(),
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=20) as res:
-                return json.loads(res.read().decode())
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode(errors="replace")
-            raise ExchangeError(f"HTTP {exc.code}: {raw}") from exc
-        except urllib.error.URLError as exc:
-            raise ExchangeError(f"network error: {exc}") from exc
+        for attempt in range(2):
+            req = urllib.request.Request(
+                self.base_url + path,
+                data=body.encode() if body else None,
+                headers=self._headers(method, path, body),
+                method=method.upper(),
+            )
+            try:
+                with self._opener.open(req, timeout=20) as res:
+                    return json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                raw = exc.read().decode(errors="replace")
+                if attempt == 0 and self._sync_clock_from_error(raw):
+                    continue
+                raise ExchangeError(f"HTTP {exc.code}: {raw}") from exc
+            except urllib.error.URLError as exc:
+                raise ExchangeError(f"network error: {exc}") from exc
+
+        raise ExchangeError("request failed after clock synchronization")
+
+    def _sync_clock_from_error(self, raw):
+        if "timestamp_too_far" not in raw:
+            return False
+        match = re.search(r"current time unixMilli (\d+)", raw)
+        if not match:
+            return False
+        server_ms = int(match.group(1))
+        self._clock_offset_ms = server_ms - int(time.time() * 1000) - 100
+        return True
 
     def markets(self):
         return self.request("GET", "/v1/markets")
