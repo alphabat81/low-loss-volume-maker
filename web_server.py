@@ -23,6 +23,12 @@ def read_tail(path, lines=80):
         return ""
 
 
+def bot_returncode():
+    if BOT_PROCESS is None:
+        return None
+    return BOT_PROCESS.poll()
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, payload):
         body = json.dumps(payload, indent=2, default=str).encode("utf-8")
@@ -60,10 +66,12 @@ class Handler(BaseHTTPRequestHandler):
                     "config": config,
                     "state": state,
                     "bot_running": running,
+                    "bot_returncode": bot_returncode(),
                     "live_enabled": __import__("os").getenv("ONDO_LIVE_ENABLED") == "1",
                     "key_present": bool(__import__("os").getenv("ONDO_KEY_ID")),
                     "secret_present": bool(__import__("os").getenv("ONDO_API_SECRET")),
                     "log_tail": read_tail(config["log_path"]),
+                    "process_log_tail": read_tail(ROOT / "logs" / "bot_process.log", lines=40),
                 },
             )
             return
@@ -103,12 +111,14 @@ class Handler(BaseHTTPRequestHandler):
             if BOT_PROCESS is not None and BOT_PROCESS.poll() is None:
                 self.send_json(200, {"status": "already_running"})
                 return
+            process_log = ROOT / "logs" / "bot_process.log"
+            process_log.parent.mkdir(parents=True, exist_ok=True)
+            output = process_log.open("ab")
             BOT_PROCESS = subprocess.Popen(
                 [sys.executable, "main.py", "--config", "config.json"],
                 cwd=str(ROOT),
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
             )
             self.send_json(200, {"status": "started", "pid": BOT_PROCESS.pid})
             return

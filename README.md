@@ -32,11 +32,13 @@ ONDO_LIVE_ENABLED=1
 powershell -ExecutionPolicy Bypass -File start_live_console.ps1
 ```
 
-To keep the local console alive during the current Windows session:
+To keep the local console alive during the current Windows session and start the live bot once after the console is reachable:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File keep_console_alive.ps1
 ```
+
+The watchdog starts the bot only once per Windows session. If you press `거래 중지`, it will stay stopped until you press `계속 거래 시작` again or restart the watchdog/session.
 
 ## Run Bot Directly
 

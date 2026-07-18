@@ -155,6 +155,21 @@ def sleep_between_loops(config, logger):
     time.sleep(delay)
 
 
+def retry_startup_step(label, action, config, state_store, logger, once=False):
+    state = state_store.state
+    while True:
+        try:
+            return action()
+        except Exception as exc:
+            message = f"{label}: {exc}"
+            state["last_error"] = message
+            state_store.save()
+            log_event(logger, "startup_retry", step=label, error=str(exc))
+            if once:
+                raise
+            sleep_between_loops(config, logger)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Low Loss Volume Maker")
     parser.add_argument("--config", default="config.json")
@@ -170,7 +185,7 @@ def main():
     exchange = OndoExchange(config["api_base"], mode)
     paper = PaperBroker(state, config["paper_starting_equity_usdc"])
     market_data = MarketData(exchange, config["market"])
-    meta = market_data.sync_market_meta()
+    meta = retry_startup_step("market_meta_sync", market_data.sync_market_meta, config, state_store, logger, args.once)
     orders = OrderManager(config, exchange, paper, meta, logger)
     risk = RiskManager(config, state_store, logger)
     strategy = LowLossVolumeMaker(config)
@@ -181,9 +196,21 @@ def main():
         return
     if mode == "live":
         lev = exchange_leverage_value(config)
-        result = exchange.set_leverage(config["market"], lev)
+        result = retry_startup_step(
+            "set_exchange_leverage",
+            lambda: exchange.set_leverage(config["market"], lev),
+            config,
+            state_store,
+            logger,
+            args.once,
+        )
         log_event(logger, "set_exchange_leverage", target=config["default_leverage"], exchange_leverage=lev, result=result)
-    orders.cancel_stale_or_all(config["market"], cancel_all=False)
+    try:
+        orders.cancel_stale_or_all(config["market"], cancel_all=False)
+    except Exception as exc:
+        state["last_error"] = f"startup_cancel_stale: {exc}"
+        state_store.save()
+        log_event(logger, "startup_retry", step="startup_cancel_stale", error=str(exc))
 
     while True:
         try:
